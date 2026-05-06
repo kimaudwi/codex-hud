@@ -74,4 +74,28 @@ assert.match(
   'identity line should show config reasoning effort before a session is bound'
 );
 
+const contextDriven = stripAnsi(
+  renderIdentityLine(
+    {
+      ...baseData,
+      contextUsage: {
+        used: 216800,
+        total: 258400,
+        percent: 84,
+        inputTokens: 1900,
+        outputTokens: 777,
+        cachedTokens: 202100,
+        compactCount: 7,
+      },
+    },
+    layout
+  )
+);
+
+assert.doesNotMatch(
+  contextDriven,
+  /84%|216\.8K|258\.4K|Tokens:/,
+  'identity line should not duplicate context details already shown on the token line'
+);
+
 console.log('test-identity-line-effort: PASS');
