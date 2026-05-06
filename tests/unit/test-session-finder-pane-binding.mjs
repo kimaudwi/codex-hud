@@ -5,6 +5,8 @@ import path from 'node:path';
 
 import { SessionFinder } from '../../dist/collectors/session-finder.js';
 
+const env = process['env'];
+
 function makeTempCodexHome() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'codex-hud-session-finder-'));
 }
@@ -77,11 +79,20 @@ function writeSnapshot(home, threadId, paneId, nonce) {
   return filePath;
 }
 
+function assertSameFilePath(actual, expected, message) {
+  assert.equal(fs.realpathSync(actual), fs.realpathSync(expected), message);
+}
+
 const originalCodexHome = process.env.CODEX_HOME;
 const originalMainPane = process.env.CODEX_HUD_MAIN_PANE;
 const originalSessionsPath = process.env.CODEX_SESSIONS_PATH;
 
+const originalHudSessionId = env.CODEX_HUD_SESSION_ID;
+const originalHudTmuxBin = env.CODEX_HUD_TMUX_BIN;
+
 try {
+  delete env.CODEX_HUD_SESSION_ID;
+
   {
     const home = makeTempCodexHome();
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-hud-cwd-'));
@@ -130,7 +141,7 @@ try {
     const finder = new SessionFinder(cwd);
     const resolved = finder.check();
     assert.ok(resolved, 'expected a pane-bound session to resolve');
-    assert.equal(
+    assertSameFilePath(
       resolved.path,
       boundRollout,
       'pane-bound shell snapshot should override the newest unrelated rollout'
@@ -165,13 +176,92 @@ try {
     const finderOne = new SessionFinder(cwd);
     const resultOne = finderOne.check();
     assert.ok(resultOne, 'expected pane one to resolve');
-    assert.equal(resultOne.path, paneOneRollout, 'pane one should stay on its own thread');
+    assertSameFilePath(resultOne.path, paneOneRollout, 'pane one should stay on its own thread');
 
     process.env.CODEX_HUD_MAIN_PANE = '%72';
     const finderTwo = new SessionFinder(cwd);
     const resultTwo = finderTwo.check();
     assert.ok(resultTwo, 'expected pane two to resolve');
-    assert.equal(resultTwo.path, paneTwoRollout, 'pane two should stay on its own thread');
+    assertSameFilePath(resultTwo.path, paneTwoRollout, 'pane two should stay on its own thread');
+  }
+
+  {
+    const home = makeTempCodexHome();
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-hud-cwd-'));
+    env.CODEX_HOME = home;
+    delete env.CODEX_SESSIONS_PATH;
+    env.CODEX_HUD_MAIN_PANE = '%70';
+
+    const newestThread = '019d7291-a135-7fe1-b46f-8f3eca4fa451';
+    const explicitThread = '019d7295-3ef8-7292-a039-fdf7ecd4f53e';
+
+    writeRollout(home, {
+      sessionId: newestThread,
+      cwd,
+      modifiedAt: new Date(),
+    });
+    const explicitRollout = writeRollout(home, {
+      sessionId: explicitThread,
+      cwd,
+      fileOffsetMinutes: -1,
+      modifiedAt: new Date(Date.now() - 5 * 60 * 1000),
+    });
+    env.CODEX_HUD_SESSION_ID = explicitThread;
+
+    const finder = new SessionFinder(cwd);
+    const resolved = finder.check();
+    assert.ok(resolved, 'expected explicit HUD session id to resolve');
+    assertSameFilePath(
+      resolved.path,
+      explicitRollout,
+      'explicit HUD session id should override the newest unrelated rollout'
+    );
+  }
+
+  {
+    const home = makeTempCodexHome();
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-hud-cwd-'));
+    env.CODEX_HOME = home;
+    delete env.CODEX_SESSIONS_PATH;
+    delete env.CODEX_HUD_SESSION_ID;
+    env.CODEX_HUD_MAIN_PANE = '%70';
+
+    const newestThread = '019d7291-a135-7fe1-b46f-8f3eca4fa451';
+    const tmuxThread = '019d7295-3ef8-7292-a039-fdf7ecd4f53e';
+
+    writeRollout(home, {
+      sessionId: newestThread,
+      cwd,
+      modifiedAt: new Date(),
+    });
+    const tmuxRollout = writeRollout(home, {
+      sessionId: tmuxThread,
+      cwd,
+      fileOffsetMinutes: -1,
+      modifiedAt: new Date(Date.now() - 5 * 60 * 1000),
+    });
+
+    const tmuxBin = path.join(home, 'fake-tmux');
+    fs.writeFileSync(
+      tmuxBin,
+      [
+        '#!/bin/sh',
+        `printf '%s\\n' '"/opt/homebrew/bin/codex resume --remote ws://127.0.0.1:8765 ${tmuxThread}"'`,
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+    fs.chmodSync(tmuxBin, 0o755);
+    env.CODEX_HUD_TMUX_BIN = tmuxBin;
+
+    const finder = new SessionFinder(cwd);
+    const resolved = finder.check();
+    assert.ok(resolved, 'expected tmux pane start command to resolve');
+    assertSameFilePath(
+      resolved.path,
+      tmuxRollout,
+      'tmux pane start command should resolve the resumed remote thread'
+    );
   }
 } finally {
   if (originalCodexHome === undefined) {
@@ -190,6 +280,17 @@ try {
     delete process.env.CODEX_SESSIONS_PATH;
   } else {
     process.env.CODEX_SESSIONS_PATH = originalSessionsPath;
+  }
+  if (originalHudSessionId === undefined) {
+    delete env.CODEX_HUD_SESSION_ID;
+  } else {
+    env.CODEX_HUD_SESSION_ID = originalHudSessionId;
+  }
+
+  if (originalHudTmuxBin === undefined) {
+    delete env.CODEX_HUD_TMUX_BIN;
+  } else {
+    env.CODEX_HUD_TMUX_BIN = originalHudTmuxBin;
   }
 }
 

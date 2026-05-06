@@ -12,6 +12,7 @@ export {
   renderToolsLine, 
   renderTodosLine, 
   renderTokenLine,
+  renderRateLimitLine,
   renderSessionDetailLine,
   collectActivityLines 
 } from './activity-line.js';

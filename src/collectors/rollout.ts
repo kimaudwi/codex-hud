@@ -16,6 +16,7 @@ import type {
   PlanProgress,
   SessionInfo,
   TokenUsageInfo,
+  RateLimitSnapshot,
 } from '../types.js';
 
 /**
@@ -26,6 +27,7 @@ export interface RolloutParseResult {
   toolActivity: ToolActivity;
   planProgress: PlanProgress | null;
   tokenUsage: TokenUsageInfo | null;
+  rateLimits: RateLimitSnapshot | null;
   // Compact event tracking
   compactCount: number;
   lastCompactTime: Date | null;
@@ -105,6 +107,7 @@ export async function parseRolloutFile(
   let sessionReasoningEffort: string | undefined;
   let planProgress: PlanProgress | null = null;
   let tokenUsage: TokenUsageInfo | null = null;
+  let rateLimits: RateLimitSnapshot | null = null;
   let compactCount = 0;
   let lastCompactTime: Date | null = null;
   let lastToolActivityTime: Date | null = null;
@@ -119,6 +122,7 @@ export async function parseRolloutFile(
         toolActivity,
         planProgress,
         tokenUsage,
+        rateLimits,
         compactCount,
         lastCompactTime,
         lastToolActivityTime,
@@ -164,6 +168,7 @@ export async function parseRolloutFile(
           toolActivity,
           planProgress,
           tokenUsage,
+          rateLimits,
           compactCount,
           lastCompactTime,
           lastToolActivityTime,
@@ -274,6 +279,10 @@ export async function parseRolloutFile(
           }
         } else if (entry.type === 'event_msg') {
           const payload = entry.payload as EventMsgPayload;
+
+          if (payload.rate_limits) {
+            rateLimits = payload.rate_limits;
+          }
 
           if (payload.type === 'plan_update' && payload.plan) {
             const completed = payload.plan.filter((s) => s.status === 'completed').length;
@@ -421,6 +430,10 @@ export class RolloutParser {
       // Keep tokenUsage from latest parse if available, otherwise use cached
       if (!result.tokenUsage && this.cachedResult.tokenUsage) {
         result.tokenUsage = this.cachedResult.tokenUsage;
+      }
+
+      if (!result.rateLimits && this.cachedResult.rateLimits) {
+        result.rateLimits = this.cachedResult.rateLimits;
       }
     }
 

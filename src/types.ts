@@ -226,7 +226,20 @@ export interface TokenUsage {
   total_tokens?: number;
 }
 
+export interface RateLimitWindow {
+  used_percent?: number;
+  window_minutes?: number;
+  resets_at?: number | string;
+}
+
 export interface RateLimitSnapshot {
+  limit_id?: string;
+  limit_name?: string | null;
+  primary?: RateLimitWindow;
+  secondary?: RateLimitWindow;
+  credits?: unknown;
+  plan_type?: string | null;
+  rate_limit_reached_type?: string | null;
   requests_remaining?: number;
   tokens_remaining?: number;
   reset_time?: string;
@@ -336,6 +349,7 @@ export interface HudData {
   // Context/token usage
   contextUsage?: ContextUsage;
   tokenUsage?: TokenUsageInfo;
+  rateLimits?: RateLimitSnapshot;
   
   // Activity tracking
   toolActivity?: ToolActivity;

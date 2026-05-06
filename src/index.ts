@@ -145,7 +145,7 @@ const parseRolloutSafely = createParseQueue(() => rolloutParser.parse());
 /**
  * Collect all HUD data (synchronous parts)
  */
-function collectSyncData(): Omit<HudData, 'toolActivity' | 'planProgress' | 'tokenUsage' | 'session' | 'contextUsage'> {
+function collectSyncData(): Omit<HudData, 'toolActivity' | 'planProgress' | 'tokenUsage' | 'rateLimits' | 'session' | 'contextUsage'> {
   const cwd = HUD_CWD;
   const config = readCodexConfig();
 
@@ -236,6 +236,7 @@ async function collectData(): Promise<HudData> {
     toolActivity: rolloutData?.toolActivity ?? undefined,
     planProgress: rolloutData?.planProgress ?? undefined,
     tokenUsage: rolloutData?.tokenUsage ?? undefined,
+    rateLimits: rolloutData?.rateLimits ?? undefined,
     contextUsage,
     displayMode,
   };

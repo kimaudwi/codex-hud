@@ -19,6 +19,7 @@ import {
   renderEnvironmentLine,
   renderUsageLine,
   renderTokenLine,
+  renderRateLimitLine,
   renderSessionDetailLine,
   collectActivityLines,
 } from './lines/index.js';
@@ -111,6 +112,11 @@ function renderExpandedLayout(data: HudData, layout: LayoutConfig, width: number
   if (tokenLine) {
     lines.push(tokenLine);
   }
+
+  const rateLimitLine = renderRateLimitLine(data);
+  if (rateLimitLine) {
+    lines.push(rateLimitLine);
+  }
   
   // Row 4: Session details (directory, session ID, etc.)
   const sessionLine = renderSessionDetailLine(data);
@@ -124,7 +130,12 @@ function renderExpandedLayout(data: HudData, layout: LayoutConfig, width: number
   const filteredActivityLines = activityLines.filter(line => {
     // Skip if it starts with token/ctx indicators or Dir:/Session: 
     // (we already rendered these explicitly above)
-    return !line.includes('Tokens:') && !line.includes('Dir: ') && !line.includes('Session: ');
+    return !line.includes('Tokens:') &&
+      !line.includes('Ctx:') &&
+      !line.includes('Usage:') &&
+      !line.includes('Weekly:') &&
+      !line.includes('Dir: ') &&
+      !line.includes('Session: ');
   });
   lines.push(...filteredActivityLines);
   

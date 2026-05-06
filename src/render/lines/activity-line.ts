@@ -5,7 +5,7 @@
  */
 
 import { theme, colors, icons, getSpinnerFrame, truncate } from '../colors.js';
-import type { HudData, ToolActivity, ToolCall, PlanProgress } from '../../types.js';
+import type { HudData, ToolActivity, ToolCall, PlanProgress, RateLimitWindow } from '../../types.js';
 
 /**
  * Truncate a target string for display
@@ -177,6 +177,53 @@ function renderContextProgressBar(percent: number, width: number = 10): string {
   return colorFn(filledStr) + colors.dim(emptyStr);
 }
 
+function formatResetTime(resetsAt?: number | string): string | null {
+  if (resetsAt === undefined || resetsAt === null) {
+    return null;
+  }
+
+  const raw = typeof resetsAt === 'string' ? Number(resetsAt) : resetsAt;
+  if (!Number.isFinite(raw)) {
+    return null;
+  }
+
+  const resetMs = raw > 1_000_000_000_000 ? raw : raw * 1000;
+  const remainingMs = Math.max(0, resetMs - Date.now());
+  const totalMinutes = Math.ceil(remainingMs / 60_000);
+  if (totalMinutes <= 0) {
+    return 'resets now';
+  }
+
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `resets in ${days}d ${hours}h`;
+  }
+  if (hours > 0) {
+    return `resets in ${hours}h ${minutes}m`;
+  }
+  return `resets in ${minutes}m`;
+}
+
+function renderRateLimit(label: string, window?: RateLimitWindow): string | null {
+  if (!window || window.used_percent === undefined) {
+    return null;
+  }
+
+  const percent = Math.round(Math.max(0, Math.min(100, window.used_percent)));
+  const percentDisplay = percent >= 85
+    ? theme.error(`${percent}%`)
+    : percent >= 70
+      ? theme.warning(`${percent}%`)
+      : theme.info(`${percent}%`);
+  const resetText = formatResetTime(window.resets_at);
+  const resetSuffix = resetText ? colors.dim(` (${resetText})`) : '';
+
+  return `${label}: ${renderContextProgressBar(percent, 10)} ${percentDisplay}${resetSuffix}`;
+}
+
 function formatSessionId(sessionId: string): string {
   if (sessionId.length <= 8) {
     return sessionId;
@@ -253,6 +300,22 @@ export function renderTokenLine(data: HudData): string | null {
   return parts.length > 0 ? parts.join(' | ') : null;
 }
 
+export function renderRateLimitLine(data: HudData): string | null {
+  const parts: string[] = [];
+
+  const primaryLimit = renderRateLimit('Usage', data.rateLimits?.primary);
+  if (primaryLimit) {
+    parts.push(primaryLimit);
+  }
+
+  const weeklyLimit = renderRateLimit('Weekly', data.rateLimits?.secondary);
+  if (weeklyLimit) {
+    parts.push(weeklyLimit);
+  }
+
+  return parts.length > 0 ? parts.join(' | ') : null;
+}
+
 export function renderSessionDetailLine(data: HudData): string | null {
   const parts: string[] = [];
   
@@ -297,6 +360,11 @@ export function collectActivityLines(data: HudData): string[] {
   const tokenLine = renderTokenLine(data);
   if (tokenLine) {
     lines.push(tokenLine);
+  }
+
+  const rateLimitLine = renderRateLimitLine(data);
+  if (rateLimitLine) {
+    lines.push(rateLimitLine);
   }
 
   const sessionLine = renderSessionDetailLine(data);

@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { getCodexHome, getSessionsDir } from '../utils/codex-path.js';
 
 const DEFAULT_LOOKBACK_DAYS = 30;
@@ -21,6 +22,17 @@ export { getCodexHome, getSessionsDir };
 
 const SHELL_SNAPSHOTS_SUBDIR = 'shell_snapshots';
 const ARCHIVED_SESSIONS_SUBDIR = 'archived_sessions';
+const SESSION_ID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const SESSION_ID_GLOBAL_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+const env = process['env'];
+
+function normalizeSessionId(input?: string | null): string | null {
+  const value = input?.trim();
+  if (!value || !SESSION_ID_RE.test(value)) {
+    return null;
+  }
+  return value.toLowerCase();
+}
 
 function normalizePath(input?: string | null): string | null {
   if (!input) {
@@ -394,6 +406,46 @@ function findThreadIdForPane(mainPaneId: string): string | null {
   return matches[0]?.threadId ?? null;
 }
 
+function findThreadIdFromEnv(): string | null {
+  return normalizeSessionId(env.CODEX_HUD_SESSION_ID);
+}
+
+function parseThreadIdFromStartCommand(command: string): string | null {
+  if (!command.includes('codex') || !command.includes('resume')) {
+    return null;
+  }
+
+  const matches = command.match(SESSION_ID_GLOBAL_RE);
+  return normalizeSessionId(matches?.[matches.length - 1]);
+}
+
+function findThreadIdFromTmuxPane(mainPaneId: string): string | null {
+  const tmux = env.CODEX_HUD_TMUX_BIN || 'tmux';
+
+  try {
+    const output = execFileSync(
+      tmux,
+      ['display-message', '-p', '-t', mainPaneId, '#{pane_start_command}'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 1000,
+      }
+    );
+    return parseThreadIdFromStartCommand(output);
+  } catch {
+    return null;
+  }
+}
+
+function findThreadIdForMainPane(mainPaneId: string): string | null {
+  return (
+    findThreadIdFromEnv() ??
+    findThreadIdForPane(mainPaneId) ??
+    findThreadIdFromTmuxPane(mainPaneId)
+  );
+}
+
 function findRolloutPathBySessionIdInRoot(rootDir: string, sessionId: string): string | null {
   if (!fs.existsSync(rootDir)) {
     return null;
@@ -506,7 +558,7 @@ export class SessionFinder {
    * Check for active or recent sessions
    */
   check(): SessionFile | null {
-    const mainPaneId = process.env.CODEX_HUD_MAIN_PANE;
+    const mainPaneId = env.CODEX_HUD_MAIN_PANE;
     if (!mainPaneId) {
       if (this.currentSession || this.currentThreadId) {
         this.currentSession = null;
@@ -516,7 +568,7 @@ export class SessionFinder {
       return null;
     }
 
-    const threadId = findThreadIdForPane(mainPaneId);
+    const threadId = findThreadIdForMainPane(mainPaneId);
     if (!threadId) {
       if (this.currentSession || this.currentThreadId) {
         this.currentSession = null;

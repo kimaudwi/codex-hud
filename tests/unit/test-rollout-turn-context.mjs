@@ -133,4 +133,52 @@ assert.equal(
   'switching rollouts should clear running tool calls from the previous session'
 );
 
+const rolloutWithRateLimits = writeRollout([
+  {
+    timestamp: '2026-04-09T14:19:00.000Z',
+    type: 'session_meta',
+    payload: {
+      id: '019d7295-3ef8-7292-a039-fdf7ecd4f53e',
+      timestamp: '2026-04-09T14:19:00.000Z',
+      cwd: '/local/ycfeng/codex-hud',
+      originator: 'codex-tui',
+      cli_version: '0.118.0',
+      source: 'cli',
+      model_provider: 'packycode',
+    },
+  },
+  {
+    timestamp: '2026-04-09T14:19:01.000Z',
+    type: 'event_msg',
+    payload: {
+      type: 'token_count',
+      info: {
+        last_token_usage: {
+          input_tokens: 100,
+          cached_input_tokens: 20,
+          output_tokens: 10,
+          total_tokens: 110,
+        },
+        model_context_window: 1000,
+      },
+      rate_limits: {
+        primary: {
+          used_percent: 14,
+          window_minutes: 300,
+          resets_at: 1778076000,
+        },
+        secondary: {
+          used_percent: 12,
+          window_minutes: 10080,
+          resets_at: 1778508000,
+        },
+      },
+    },
+  },
+]);
+
+const { result: rateLimitResult } = await parseRolloutFile(rolloutWithRateLimits, 0, 5);
+assert.equal(rateLimitResult.rateLimits?.primary?.used_percent, 14);
+assert.equal(rateLimitResult.rateLimits?.secondary?.window_minutes, 10080);
+
 console.log('test-rollout-turn-context: PASS');
